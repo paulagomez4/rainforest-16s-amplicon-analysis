@@ -24,34 +24,34 @@ OUT_DIR=/scratch/user/paulagomezalvarez/J6784/last_analysis/results
 
 
 qiime dada2 denoise-paired \
- --i-demultiplexed-seqs ${OUT_DIR}/demux-trimmed.qza \
+ --i-demultiplexed-seqs ${OUT_DIR}/demux-paired-end.qza \
  --p-trunc-len-f 250 \
  --p-trunc-len-r 210 \
- --p-trim-left-f 0 \
- --p-trim-left-r 0 \
+ --p-trim-left-f 20 \
+ --p-trim-left-r 19 \
  --p-n-threads 10 \
- --o-representative-sequences ${OUT_DIR}/rep-seqs-250-210-trimmed.qza\
- --o-table ${OUT_DIR}/asv-table-250-210-trimmed.qza \
- --o-denoising-stats ${OUT_DIR}/denoising-stats-250-210-trimmed.qza \
+ --o-representative-sequences ${OUT_DIR}/rep-seqs-250-210-primers.qza\
+ --o-table ${OUT_DIR}/asv-table-250-210-primers.qza \
+ --o-denoising-stats ${OUT_DIR}/denoising-stats-250-210-primers.qza \
  --verbose
 
-# qiime metadata tabulate \
-# --m-input-file ${OUT_DIR}/denoising-stats-250-210-trimmed.qza \
-# --o-visualization ${OUT_DIR}/denoising-stats-250-210-trimmed.qzv
+qiime metadata tabulate \
+ --m-input-file ${OUT_DIR}/denoising-stats-250-210-primers.qza \
+ --o-visualization ${OUT_DIR}/denoising-stats-250-210-primers.qzv
 
 
 #Summarise feature table
 qiime feature-table summarize-plus \
-  --i-table ${OUT_DIR}/asv-table-250-210-trimmed.qza \
+  --i-table ${OUT_DIR}/asv-table-250-210-primers.qza \
   --m-metadata-file ${BASE_DIR}/rainforest-bark-metadata-FIXED.txt \
-  --o-summary ${OUT_DIR}/asv-table-250-210-trimmed.qzv \
-  --o-sample-frequencies ${OUT_DIR}/sample-frequencies-250-210-trimmed.qza \
-  --o-feature-frequencies ${OUT_DIR}/asv-frequencies-250-210-trimmed.qza
+  --o-summary ${OUT_DIR}/asv-table-250-210-primers.qzv \
+  --o-sample-frequencies ${OUT_DIR}/sample-frequencies-250-210-primers.qza \
+  --o-feature-frequencies ${OUT_DIR}/asv-frequencies-250-210-primers.qza
 
 #Tabulate representative sequences
 qiime feature-table tabulate-seqs \
-  --i-data ${OUT_DIR}/rep-seqs-250-210-trimmed.qza \
-  --m-metadata-file ${OUT_DIR}/asv-frequencies-250-210-trimmed.qza \
-  --o-visualization ${OUT_DIR}/rep-seqs-250-210-trimmed.qzv
+  --i-data ${OUT_DIR}/rep-seqs-250-210-primers.qza \
+  --m-metadata-file ${OUT_DIR}/asv-frequencies-250-210-primers.qza \
+  --o-visualization ${OUT_DIR}/rep-seqs-250-210-primers.qzv
 
 

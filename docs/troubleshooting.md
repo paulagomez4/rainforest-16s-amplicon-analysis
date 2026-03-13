@@ -100,68 +100,9 @@ Increase time limit in script:
 
 ---
 
-## Cutadapt Step
-
-### Issue 6: No sequences retained after cutadapt
-
-**Error:**
-```
-demux-trimmed.qza is empty or has very few sequences
-```
-
-**Possible causes:**
-1. `--p-discard-untrimmed` flag too strict
-2. Primer sequences incorrect
-3. Primers already removed by ACE
-
-**Solution:**
-
-**Option A: Remove `--p-discard-untrimmed` flag**
-```bash
-qiime cutadapt trim-paired \
-  --i-demultiplexed-sequences ${OUT_DIR}/demux-paired-end.qza \
-  --p-front-f GTGYCAGCMGCCGCGGTAA \
-  --p-front-r CCGYCAATTYMTTTRAGTTT \
-  --p-cores 4 \
-  --o-trimmed-sequences ${OUT_DIR}/demux-trimmed.qza
-# Remove the line: --p-discard-untrimmed
-```
-
-**Option B: Verify primer sequences**
-Check your first few reads:
-```bash
-zcat bbduk/SG*_R1_001.fastq.gz | head -20
-```
-
-Look for sequences starting with: `GTGYCAGC...`
-
-**Option C: Check with ACE if primers already removed**
-Contact ACE facility - they may remove primers automatically.
-
----
-
-### Issue 7: Forward vs reverse primer trimming asymmetry
-
-**Observed:**
-- Forward reads trimmed ~19bp
-- Reverse reads not trimmed (or trimmed <5bp)
-
-**Explanation:**
-This is NORMAL! 
-- Forward primer: Found at start of most R1 reads
-- Reverse primer: Not always found in R2 (quality degradation)
-- This is expected with variable-length reads
-
-**Not a problem if:**
-- Forward reads trimmed ~19bp (matches 515F length)
-- Read counts similar before/after
-- Quality scores maintained
-
----
-
 ## DADA2 Step
 
-### Issue 8: DADA2 job times out
+### Issue 6: DADA2 job times out
 
 **Error:**
 ```
@@ -178,33 +119,37 @@ Increase time and/or memory:
 
 ---
 
-### Issue 9: Low merge rate
+### Issue 7: Low merge rate (< 80%)
 
 **Error/Observation:**
 ```
-Very few reads successfully merged (< 50%)
+Very few reads successfully merged (< 50% or < 80%)
 ```
 
 **Possible causes:**
-1. Truncation lengths set too short
-2. Insufficient read overlap
-3. Poor read quality
+1. Truncation lengths too aggressive
+2. Trim-left values incorrect
+3. Primers not uniform across samples
+4. Data quality issues
 
 **Solution:**
-Check your `denoising-stats.qzv` for merge percentages.
+Check `denoising-stats.qzv` for merge percentages.
 
-Adjust truncation if needed:
-```bash
-# If merge rate < 80%, try:
---p-trunc-len-f 250
---p-trunc-len-r 220  # Increase from 210
-```
+**If merge rate < 50%:**
+- Verify trim-left values match your primers
+- Check that truncation lengths allow sufficient overlap
+- Try increasing trunc-len-r by 10bp
 
-But verify quality first with `demux-trimmed.qzv`!
+**If merge rate 50-80%:**
+- This is acceptable but could be improved
+- Try: `--p-trunc-len-r 220` (instead of 210)
+
+**If merge rate > 80%:**
+- Excellent! Data quality is good ✅
 
 ---
 
-### Issue 10: Very few ASVs generated
+### Issue 8: Very few ASVs generated
 
 **Observation:**
 ```
@@ -213,53 +158,91 @@ Only 5-10 ASVs in rep-seqs.qza (expected 50+)
 
 **Possible causes:**
 1. Contamination with single organism
-2. Primers not completely removed
+2. Incorrect trim-left values (data lost)
 3. Sample issues
 
 **Solution:**
 1. Check rep-seqs visualization
-2. Verify primer removal with cutadapt worked
+2. Verify trim-left values match your primers (19, 20)
 3. Review sample collection/processing for issues
 
 ---
 
-### Issue 11: High chimera rate (> 30%)
+### Issue 9: High chimera rate (> 30%)
 
 **Observation:**
 ```
 Denoising stats show > 30% sequences removed as chimeras
 ```
 
+**Expected:** 10-25% is normal
+
 **Possible causes:**
 1. PCR artifacts
-2. Mixed samples
-3. Contamination
+2. Mixed/contaminated samples
+3. Poor merge overlap (low merge rate)
 
 **Solution:**
-Check `denoising-stats.qzv` - chimera rate of 10-20% is typical.
+Check `denoising-stats.qzv`:
+- If merge rate < 80%: Adjust truncation lengths
+- If merge rate > 80% but high chimeras: Sample contamination
 
-If very high, verify:
-- Sample identity
-- PCR amplification protocols
-- Contamination during library prep
+Chimera rate of 10-22% is excellent ✅
+
+---
+
+## Primer Trimming Issues
+
+### Issue 10: Trim-left values not working as expected
+
+**Error:**
+```
+Trimmed sequences still contain primer sequences
+```
+
+**Possible causes:**
+1. Primer sequences not at start of reads
+2. Primers already removed by sequencing facility
+3. Incorrect trim-left values for your primers
+
+**Solution:**
+```bash
+# Check your first few reads
+qiime tools export --input-path demux-paired-end.qza \
+  --output-path demux-exported
+
+# View first reads from one sample
+zcat demux-exported/SG0649*/forward.fastq.gz | head -8
+
+# Look at first line after sequence header
+# Should start with: GTGYCAGCMGCCGCGGTAA (515F)
+```
+
+If primers are present:
+- Confirm trim-left-f 19 and trim-left-r 20
+
+If primers NOT present:
+- Contact ACE sequencing facility
+- Primers may have been pre-removed
+- Use trim-left 0
 
 ---
 
 ## Data Quality Issues
 
-### Issue 12: Quality drops sharply after position 200bp (forward reads)
+### Issue 11: Quality drops sharply before position 210bp (reverse reads)
 
 **Solution:**
 Adjust truncation:
 ```bash
---p-trunc-len-f 200  # Instead of 250
+--p-trunc-len-r 180  # Reduce from 210
 ```
 
-But balance with merge overlap requirements!
+But verify with `demux-paired-end.qzv` first!
 
 ---
 
-### Issue 13: All samples have very different read counts
+### Issue 12: All samples have very different read counts
 
 **Observation:**
 ```
@@ -271,6 +254,7 @@ Sample 3: 25,000 reads
 **Possible causes:**
 1. Unequal DNA input
 2. Different sequencing performance per sample
+3. Different quality after filtering
 
 **Solution:**
 During diversity analysis, use rarefaction to normalize:
@@ -283,7 +267,7 @@ qiime diversity core-metrics-phylogenetic \
 
 ## File/Path Issues
 
-### Issue 14: "File not found" errors
+### Issue 13: "File not found" errors
 
 **Error:**
 ```
@@ -302,7 +286,7 @@ ls -lh /scratch/user/YOUR_USERNAME/J6784/last_analysis/results/
 
 ---
 
-### Issue 15: Metadata file not found
+### Issue 14: Metadata file not found
 
 **Error:**
 ```
@@ -318,6 +302,46 @@ METADATA_FILE=${BASE_DIR}/data/rainforest-bark-metadata-FIXED.txt
 ```
 
 3. Ensure metadata is TSV format (tab-separated)
+4. First column must be `sample-id`
+
+---
+
+## Workflow Comparison
+
+### ❌ Old approach (NOT recommended)
+
+Separate cutadapt step:
+```bash
+qiime cutadapt trim-paired \
+  --i-demultiplexed-sequences demux-paired-end.qza \
+  --p-front-f GTGYCAGCMGCCGCGGTAA \
+  --p-front-r CCGYCAATTYMTTTRAGTTT \
+  --p-discard-untrimmed \
+  --o-trimmed-sequences demux-trimmed.qza
+```
+
+**Results:** 30-70% merge rate ❌
+
+**Why it failed:** Over-trimming removed overlap needed for merging
+
+---
+
+### ✅ New approach (RECOMMENDED)
+
+Direct trim-left in DADA2:
+```bash
+qiime dada2 denoise-paired \
+  --i-demultiplexed-seqs demux-paired-end.qza \
+  --p-trunc-len-f 250 \
+  --p-trunc-len-r 210 \
+  --p-trim-left-f 19 \
+  --p-trim-left-r 20 \
+  ...
+```
+
+**Results:** 82-90% merge rate ✅
+
+**Why it works:** Preserves overlap while removing primers
 
 ---
 
@@ -382,3 +406,13 @@ sstat -j JOBID.batch --format=AveCPU,AveRSS,MaxRSS
 - If jobs timeout: Increase time limits
 - If memory errors: Increase --mem
 - If too slow: Increase --cpus-per-task
+
+---
+
+## Key Lessons Learned
+
+1. **Direct trim-left > Separate cutadapt** for uniform primers
+2. **Merge rate is critical** - expect >80% for good data
+3. **Chimera rate 10-25%** is normal and healthy
+4. **Monitor denoising-stats.qzv** to diagnose issues
+5. **Preserve sequence overlap** for reliable merging

@@ -7,16 +7,15 @@
 **Sequencing Details:**
 - Platform: Illumina MiSeq 2x300bp
 - Target region: 16S V3-V4 (515F/806wR primers)
-- Samples: 3 rainforest tree species × 1 sample per tree
+- Samples: 12 rainforest bark samples
 - Sequencing facility: ACE (UQ)
 
 **Analysis Pipeline:**
 1. Quality and adapter trimming (BBDuk)
 2. QIIME2 import and demultiplexing
-3. Primer removal (cutadapt)
-4. Denoising and ASV generation (DADA2)
-5. Taxonomy assignment (downstream)
-6. Diversity analysis (downstream)
+3. Denoising and ASV generation (DADA2)
+4. Taxonomy assignment (downstream)
+5. Diversity analysis (downstream)
 
 ## 🔧 Prerequisites
 
@@ -35,13 +34,12 @@ rainforest-16s-amplicon-analysis/
 ├── scripts/                           # All analysis scripts
 │   ├── 01-bbduk.sh                   # Quality trimming
 │   ├── 02-import.sh                  # QIIME2 import
-│   ├── 03-cutadapt.sh                # Primer removal
-│   ├── 04-dada2.sh                   # Denoising
+│   ├── 03-dada2.sh                   # Denoising & ASV generation
 │   └── README.md                     # Scripts documentation
 ├── config/                            # Configuration files
 │   ├── parameters.txt                # All pipeline parameters
 │   └── metadata-template.txt         # Sample metadata template
-├���─ docs/                              # Documentation
+├── docs/                              # Documentation
 │   ├── workflow.md                   # Detailed workflow guide
 │   └── troubleshooting.md            # Common issues & solutions
 └── data/                              # Data placeholder
@@ -64,17 +62,14 @@ mkdir -p /scratch/user/YOUR_USERNAME/J6784/last_analysis/{data,results,bbduk}
 ### Step 2: Run the pipeline
 
 ```bash
-# 1. Quality trimming
+# 1. Quality trimming (removes low-quality bases, adapters, PhiX)
 sbatch scripts/01-bbduk.sh
 
-# 2. Import to QIIME2
+# 2. Import to QIIME2 (convert to qza format)
 sbatch scripts/02-import.sh
 
-# 3. Remove primers
-sbatch scripts/03-cutadapt.sh
-
-# 4. Denoise with DADA2
-sbatch scripts/04-dada2.sh
+# 3. Denoise with DADA2 (remove errors, merge pairs, generate ASVs)
+sbatch scripts/03-dada2.sh
 ```
 
 ### Step 3: Monitor jobs
@@ -89,8 +84,9 @@ See `config/parameters.txt` for detailed parameter descriptions.
 
 **Key parameters (V3-V4, 2x300bp MiSeq):**
 - BBDuk: `qtrim=rl trimq=10 minlength=50`
-- Cutadapt: Remove 515F (GTGYCAGCMGCCGCGGTAA) and 806wR (CCGYCAATTYMTTTRAGTTT)
-- DADA2: `trunc-len-f 250, trunc-len-r 210, trim-left-f 0, trim-left-r 0`
+- DADA2: 
+  - Truncation: `trunc-len-f 250, trunc-len-r 210`
+  - Primer removal: `trim-left-f 19, trim-left-r 20`
 
 ## 📝 Sample Metadata
 
@@ -131,17 +127,23 @@ After running the full pipeline:
 - `denoising-stats.qza` – QC metrics
 - `*.qzv` – Visualizations for QIIME2 View
 
+**Expected Results (from this project):**
+- Total reads: ~402k
+- Per-sample reads: 13.5k - 66k
+- Merge rate: 82-90%
+- Non-chimeric rate: 78-90%
+- ASVs per sample: 50-500
+
 ## 🔗 References
 
 - [QIIME2 Amplicon Tutorial](https://docs.qiime2.org/2025.1/tutorials/overview/)
 - [BBDuk Documentation](https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/bbduk-guide/)
-- [Cutadapt Documentation](https://cutadapt.readthedocs.io/)
 - [DADA2 Paper](https://www.nature.com/articles/nmeth.3869)
 
 ## 👤 Author
 
-Paula Gomez Alvarez
-Southern Cross University (SCU)
+Paula Gomez Alvarez  
+SCU - Faculty of Science and Engineering
 
 ## 📄 License
 
@@ -151,4 +153,5 @@ Southern Cross University (SCU)
 
 **Last updated:** March 2026  
 **QIIME2 version:** 2025.7  
+**Pipeline version:** 1.0  
 **Bunya HPC:** University of Queensland

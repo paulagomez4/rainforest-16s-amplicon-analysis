@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document provides a detailed explanation of the 16S amplicon analysis pipeline for rainforest bark microbiome samples.
+This document provides a detailed explanation of the simplified 3-step 16S amplicon analysis pipeline for rainforest bark microbiome samples.
 
 ## Experimental Design
 
@@ -10,10 +10,30 @@ This document provides a detailed explanation of the 16S amplicon analysis pipel
 - Platform: Illumina MiSeq
 - Configuration: 2x300bp paired-end reads
 - Region: 16S V3-V4 (515F/806wR primers)
-- Samples: 3 rainforest tree species (1 biological replicate each)
+- Samples: 12 rainforest bark samples
 - Facility: ACE (UQ)
 
-**Note:** With only 3 samples, this analysis is exploratory. Consider collecting replicates for robust statistical comparisons.
+---
+
+## Pipeline Architecture
+
+```
+Raw FASTQ Files (300bp x 2)
+        ↓
+    BBDuk (Quality Trimming)
+        ↓
+    QIIME2 Import (demux-paired-end.qza)
+        ↓
+    DADA2 Denoising
+    ├─ Remove primers (trim-left: 19bp, 20bp)
+    ├─ Truncate reads (250bp, 210bp)
+    ├─ Merge pairs
+    └─ Remove chimeras
+        ↓
+    ASV Table + Representative Sequences
+        ↓
+    [Downstream: Taxonomy, Diversity]
+```
 
 ---
 
@@ -39,11 +59,12 @@ ktrim=r            # Trim kmers from right
 k=23, mink=11      # Kmer matching
 hdist=1            # 1 mismatch allowed
 tpe, tbo           # Trim strategies
+threads=10         # Parallel processing
 ```
 
 ### Expected Results
 
-**Input:** Raw 2x300bp paired-end reads
+**Input:** Raw 2x300bp paired-end reads (~33.5k reads per sample)
 
 **Output:** Quality-trimmed reads
 - Forward (R1): ~291bp median
@@ -55,7 +76,7 @@ tpe, tbo           # Trim strategies
 After running, verify:
 ```bash
 ls -lh bbduk/SG*_R1_001.fastq.gz
-# Files should be ~80-100MB each (depending on depth)
+# Files should be properly trimmed
 ```
 
 ---
@@ -80,7 +101,8 @@ Convert raw FASTQ files to QIIME2 artifact format (.qza) for downstream analysis
 **Output:** `demux-paired-end.qza`
 
 This artifact contains:
-- All paired-end sequences
+- All 12 samples
+- Paired-end sequences
 - Quality scores
 - Sample metadata
 
@@ -90,116 +112,72 @@ View visualization:
 1. Download `demux-paired-end.qzv`
 2. Upload to [QIIME2 View](https://view.qiime2.org/)
 3. Check:
-   - Sequence count per sample
+   - All 12 samples present
+   - Sequence count per sample (13.5k - 66k)
    - Quality score distribution
-   - Read length distribution
-
-Expected metrics:
-- All 3 samples present
-- Forward reads: Median 291bp, Q35-Q20
-- Reverse reads: Median 289bp, Q35-Q25
+   - Read length distribution (median ~290bp)
 
 ---
 
-## Step 3: Primer Removal (Cutadapt)
+## Step 3: Denoising and ASV Generation (DADA2)
 
 ### Purpose
-Remove primer sequences that would interfere with denoising and taxonomic assignment.
-
-### Script
-`scripts/03-cutadapt.sh`
-
-### Primers
-
-**Forward (515F):** `GTGYCAGCMGCCGCGGTAA` (19bp)
-- Positions: Start of R1
-- Degeneracies: Y=C/T, M=A/C, R=A/G
-
-**Reverse (806wR):** `CCGYCAATTYMTTTRAGTTT` (20bp)
-- Positions: Start of R2
-- Note: Not always found in R2 due to read length variation
-
-### Parameters
-
-```bash
---p-front-f GTGYCAGCMGCCGCGGTAA    # Remove 515F from R1
---p-front-r CCGYCAATTYMTTTRAGTTT   # Remove 806wR from R2
---p-cores 4                         # Parallel processing
-```
-
-### Expected Results
-
-**Output:** `demux-trimmed.qza`
-
-**Sequence lengths after trimming:**
-- Forward: ~272bp median (19bp trimmed)
-- Reverse: ~289bp median (primer not found in most)
-
-This is expected! Reverse reads don't always contain the full primer sequence due to quality degradation at longer read positions.
-
-### Quality Check
-
-Compare visualizations:
-```bash
-# Compare:
-demux-paired-end.qzv  (before cutadapt)
-demux-trimmed.qzv     (after cutadapt)
-```
-
-Expected changes:
-- Forward read length: 291bp → 272bp
-- Reverse read length: Should remain ~289bp
-- Quality scores: Similar or slightly improved
-
----
-
-## Step 4: Denoising and ASV Generation (DADA2)
-
-### Purpose
-Denoise sequences and generate Amplicon Sequence Variants (ASVs):
+Denoise sequences, remove primers, merge pairs, and generate Amplicon Sequence Variants (ASVs):
 - Remove sequencing errors
+- Remove primer sequences (515F: 19bp, 806wR: 20bp)
 - Merge paired-end reads
 - Identify chimeric sequences
 - Generate final ASV table
 
 ### Script
-`scripts/04-dada2.sh`
+`scripts/03-dada2.sh`
+
+### Why Direct trim-left (Not Separate Cutadapt)
+
+**Previous approach (NOT recommended):**
+- Separate cutadapt step
+- Result: 30-70% merge rate ❌
+- Issue: Over-trimmed sequences lost overlap for merging
+
+**Current approach (RECOMMENDED):**
+- Direct trim-left in DADA2
+- Result: 82-90% merge rate ✅
+- Advantage: Preserves overlap, simpler, more reliable
 
 ### Parameters
 
 ```bash
-# Truncation (removes low-quality tails)
---p-trunc-len-f 250    # Keep 250bp of forward reads
---p-trunc-len-r 210    # Keep 210bp of reverse reads
+# Primer Removal via trim-left
+--p-trim-left-f 19              # Remove 515F (19bp)
+--p-trim-left-r 20              # Remove 806wR (20bp)
 
-# Trimming (remove primers - not needed, already done by cutadapt)
---p-trim-left-f 0
---p-trim-left-r 0
+# Truncation (removes low-quality tails)
+--p-trunc-len-f 250             # Keep 250bp of forward reads
+--p-trunc-len-r 210             # Keep 210bp of reverse reads
 
 # Processing
---p-n-threads 10       # Parallel processing
---verbose              # Detailed output
+--p-n-threads 10                # Parallel processing
+--verbose                       # Detailed output
 ```
 
 ### Truncation Rationale
 
-Why these specific values?
+**Forward reads (trim-left 19 → trunc 250):**
+- Raw: 291bp
+- After primer removal: 272bp
+- After truncation: 250bp
+- Quality: Good (Q~20-25 at position 250)
 
-**Forward reads (250bp):**
-- Raw: 272bp median (after primer removal)
-- Quality drops after position 250
-- Removes low-quality tail
-- Maintains good quality (Q~20-25)
+**Reverse reads (trim-left 20 → trunc 210):**
+- Raw: 289bp
+- After primer removal: 269bp
+- After truncation: 210bp
+- Quality: Maintained (Q~25-30)
+- Purpose: Ensure sufficient overlap with forward reads
 
-**Reverse reads (210bp):**
-- Raw: 289bp median
-- Quality maintained longer than forward
-- Truncated to 210bp to ensure sufficient overlap with forward
-- DADA2 requires ≥16bp overlap to merge pairs
-
-**Minimum overlap for merging:**
-- 16bp overlap at truncation points
-- Helps identify true sequences vs. errors
+**Overlap for merging:**
+- Minimum required: 16bp
+- At positions 250bp (F) and 210bp (R): Adequate ✅
 
 ### DADA2 Workflow
 
@@ -210,6 +188,7 @@ Why these specific values?
 2. **Denoise** (error correction)
    - Infers sample composition
    - Removes systematic errors
+   - Trim-left removes primer sequences
 
 3. **Merge** (pair-end assembly)
    - Combines R1 and R2 reads
@@ -218,7 +197,7 @@ Why these specific values?
 
 4. **Remove chimeras**
    - Identifies chimeric sequences
-   - Typical removal rate: 5-15%
+   - Typical removal rate: 10-25%
 
 ### Expected Results
 
@@ -227,7 +206,7 @@ Why these specific values?
 1. **rep-seqs.qza** – Representative sequences
    - One sequence per ASV
    - FASTA format (stored in artifact)
-   - Expected: 100-500 ASVs per sample
+   - Expected: 100-500 ASVs total
 
 2. **asv-table.qza** – ASV abundance table
    - Rows: ASVs
@@ -246,32 +225,19 @@ After running, examine `denoising-stats.qzv`:
 
 For each sample:
 - **% Input:** Count of raw reads
-- **% Filtered:** Reads passing quality filter (should be >80%)
-- **% Merged:** Successfully merged pairs (should be >90%)
-- **% Non-chimeric:** After chimera removal (typically 85-95%)
+- **% Filtered:** Reads passing quality filter
+- **% Merged:** Successfully merged pairs (expect: >80% with direct trim-left)
+- **% Non-chimeric:** After chimera removal (expect: 78-90%)
 
-Example (for 10,000 input reads per sample):
+**Expected Results (Rainforest Project):**
+
 ```
-Input reads:        10,000
-After filter:        9,500 (95%)
-After merge:         9,200 (92% of input)
-Non-chimeric:        8,800 (88% of input)
+Per-sample breakdown:
+- Input: 13.5k - 66k reads
+- Filtered: 85-91% retained
+- Merged: 82-90% (good overlap!) ✅
+- Non-chimeric: 78-90% (excellent data quality) ✅
 ```
-
----
-
-## Expected ASV Characteristics
-
-### ASV Count
-- Per sample: 50-500 ASVs (typical for environmental samples)
-- Rainforest bark: Likely moderate diversity (50-200 ASVs)
-
-### ASV Length
-- Expected: ~252bp (V3-V4 region)
-- Variation: 240-260bp (length heterogeneity in 16S)
-
-### Read Depth
-- Per sample: 5,000-50,000 final reads (depends on sequencing depth)
 
 ---
 
@@ -286,14 +252,30 @@ Non-chimeric:        8,800 (88% of input)
 ### Visualizations (.qzv)
 
 - `demux-paired-end.qzv` – Raw sequence QC
-- `demux-trimmed.qzv` – After primer removal
 - `denoising-stats.qzv` – DADA2 QC
+- `asv-table.qzv` – Feature table summary
+- `rep-seqs.qzv` – Sequence table
 
 ### Feature Data
 
 - `sample-frequencies.qza` – Reads per sample
 - `asv-frequencies.qza` – ASVs per sample
-- `rep-seqs.qzv` – Sequence table
+
+---
+
+## ASV Characteristics
+
+### ASV Count
+- Per sample: 50-300 ASVs typical
+- Rainforest bark: Moderate diversity
+
+### ASV Length
+- Expected: ~250bp (V3-V4 region)
+- Variation: 240-260bp (16S heterogeneity)
+
+### Read Depth
+- Per sample: 13.5k - 66k final reads
+- Total: ~402k reads
 
 ---
 
@@ -311,19 +293,13 @@ After successful DADA2 denoising:
    - Rarefaction curves
 
 3. **Differential Abundance**
-   - Compare species microbiomes
+   - Compare bark microbiomes
    - Identify indicator taxa
 
 4. **Visualization**
    - Barplots
    - PCoA plots
    - Heatmaps
-
----
-
-## Troubleshooting
-
-See `docs/troubleshooting.md` for common issues and solutions.
 
 ---
 

@@ -44,30 +44,11 @@ sbatch 02-import.sh
 
 ---
 
-### 3. `03-cutadapt.sh` - Primer Removal
+### 3. `03-dada2.sh` - Denoising and ASV Generation
 
-**Purpose:** Remove 515F and 806wR primer sequences
+**Purpose:** Denoise sequences, remove primers, merge pairs, and generate Amplicon Sequence Variants (ASVs)
 
 **Input:** `demux-paired-end.qza`
-
-**Output:** `demux-trimmed.qza`
-
-**Primers:**
-- Forward (515F): `GTGYCAGCMGCCGCGGTAA`
-- Reverse (806wR): `CCGYCAATTYMTTTRAGTTT`
-
-**Run:**
-```bash
-sbatch 03-cutadapt.sh
-```
-
----
-
-### 4. `04-dada2.sh` - Denoising and ASV Generation
-
-**Purpose:** Denoise sequences and generate Amplicon Sequence Variants (ASVs)
-
-**Input:** `demux-trimmed.qza`
 
 **Outputs:**
 - `rep-seqs.qza` – Representative sequences
@@ -77,13 +58,19 @@ sbatch 03-cutadapt.sh
 **Key parameters:**
 - `trunc-len-f 250` – Truncate forward reads to 250bp
 - `trunc-len-r 210` – Truncate reverse reads to 210bp
-- `trim-left-f 0` – No additional trimming (already done by cutadapt)
-- `trim-left-r 0` – No additional trimming
+- `trim-left-f 19` – Remove 515F primer (19bp)
+- `trim-left-r 20` – Remove 806wR primer (20bp)
 - `n-threads 10` – Use 10 CPU cores
+
+**Why this approach?**
+- Direct primer trimming with `trim-left` parameters
+- Works well with uniform primer sequences (ACE)
+- No need for separate cutadapt step
+- Maintains proper sequence overlap for merging
 
 **Run:**
 ```bash
-sbatch 04-dada2.sh
+sbatch 03-dada2.sh
 ```
 
 ---
@@ -127,3 +114,11 @@ cat bbduk-JOBID.error
 ## Troubleshooting
 
 See `../docs/troubleshooting.md` for common issues.
+
+---
+
+## Notes
+
+- Removed cutadapt as separate step (integrated into DADA2 via trim-left)
+- Simpler 3-step workflow improves reliability
+- Better merge rates (82-90% vs cutadapt: 30-70%)

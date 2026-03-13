@@ -8,10 +8,11 @@ Project: Rainforest bark microbiome 16S analysis
 Sequencing Platform: Illumina MiSeq 2x300bp
 Target Region: 16S V3-V4
 Primers: 515F / 806wR (EMP protocol)
-Samples: 3 rainforest tree species (1 sample each)
+Samples: 12 rainforest bark samples
 Sequencing Facility: ACE (UQ)
 HPC: Bunya (University of Queensland)
 Analysis Date: March 2026
+Pipeline Version: 1.0 (simplified 3-step workflow)
 
 ================================================================================
 BBDUK PARAMETERS
@@ -37,7 +38,7 @@ Other:
   tbo                   - Trim by overlap
   threads=10            - CPU cores to use
 
-Expected Output: ~90-95% sequences retained (depends on quality)
+Expected Output: ~90-95% sequences retained
 
 ================================================================================
 QIIME2 IMPORT PARAMETERS
@@ -54,62 +55,49 @@ Output Artifact: demux-paired-end.qza
 Expected: All samples successfully imported
 
 ================================================================================
-CUTADAPT PARAMETERS
+DADA2 DENOISING PARAMETERS (3-STEP SIMPLIFIED WORKFLOW)
 ================================================================================
 
-Forward Primer (515F): GTGYCAGCMGCCGCGGTAA
-  - Standard EMP V3-V4 forward primer
-  - Expected location: Start of read 1 (R1)
-  - Length: 19bp (with degeneracies)
+Input: demux-paired-end.qza (quality-trimmed sequences from BBDuk)
 
-Reverse Primer (806wR): CCGYCAATTYMTTTRAGTTT
-  - Standard EMP V4 reverse primer
-  - Expected location: Start of read 2 (R2)
-  - Length: 20bp (with degeneracies)
+Primer Removal (via trim-left parameters):
+  Forward Primer (515F): GTGYCAGCMGCCGCGGTAA (19bp)
+    trim-left-f: 19     - Remove from start of R1
+    
+  Reverse Primer (806wR): CCGYCAATTYMTTTRAGTTT (20bp)
+    trim-left-r: 20     - Remove from start of R2
 
-Cutadapt Options:
-  --p-discard-untrimmed: FALSE (changed due to read length variation on MiSeq)
-  --p-cores: 4 CPU cores
-  
-Expected: Forward reads trimmed ~19bp, reverse reads may not have primer
-
-Output Artifacts:
-  - demux-trimmed.qza: Primer-trimmed sequences
-
-Quality Before/After Trimming:
-  Forward: 291bp → 272bp median length (19bp trimmed)
-  Reverse: 289bp → 289bp median length (no reverse primer found)
-
-================================================================================
-DADA2 DENOISING PARAMETERS
-================================================================================
-
-Input: demux-trimmed.qza (primer-trimmed sequences)
+Rationale for direct trim-left:
+  - Primers are uniform (from ACE sequencing facility)
+  - No need for separate cutadapt step
+  - Better preservation of sequence overlap for merging
+  - Simpler workflow with higher reliability
 
 Truncation Lengths:
-  trunc-len-f: 250bp     - Truncate R1 to 250bp (quality drops before this)
+  trunc-len-f: 250bp     - Truncate R1 to 250bp (quality drops after)
   trunc-len-r: 210bp     - Truncate R2 to 210bp (maintains higher quality)
   Rationale: Accounts for quality degradation, ensures sufficient overlap
 
-Trim Lengths (primer trimming):
-  trim-left-f: 0bp       - Already trimmed by cutadapt
-  trim-left-r: 0bp       - Already trimmed by cutadapt
-
 Denoising Parameters:
   n-threads: 10          - CPU cores
-  
+
+DADA2 Workflow:
+  1. Learn error models (per sample)
+  2. Denoise (error correction)
+  3. Merge paired-end reads
+  4. Remove chimeras
+
 Expected Output:
   - rep-seqs.qza: Representative ASV sequences
   - asv-table.qza: ASV abundance table
-  - denoising-stats.qza: Denoising statistics (input/output/merged counts)
+  - denoising-stats.qza: Denoising statistics
 
-Quality Control Metrics to Check:
-  - % reads passing filter
-  - % reads merged
-  - % chimeras identified
-  - Final ASV count per sample
-
-Expected ASV Count: 100-500 per sample (depends on diversity)
+Expected Results (Rainforest Bark Project):
+  - Total input reads: ~402,380
+  - Merge rate: 82-90% ✅ (Good - sufficient overlap)
+  - Non-chimeric rate: 78-90% ✅ (Good - reliable merging)
+  - Final ASV count per sample: 50-500
+  - Per-sample read depth: 13.5k - 66k reads
 
 ================================================================================
 EXPECTED SEQUENCE LENGTHS AT EACH STEP
@@ -123,19 +111,16 @@ EXPECTED SEQUENCE LENGTHS AT EACH STEP
    R1: ~291bp median
    R2: ~289bp median
 
-3. After Cutadapt:
-   R1: ~272bp median (19bp primer removed)
-   R2: ~289bp median (primer not always found)
+3. After DADA2 trim-left:
+   R1: ~272bp (291 - 19bp primer)
+   R2: ~269bp (289 - 20bp primer)
 
-4. After DADA2:
+4. After DADA2 truncation:
    R1: Truncated to 250bp
    R2: Truncated to 210bp
    
    Final merged ASV length: 
-   ~250bp (overlap of R1 and R2 with 16bp+ overlap required by DADA2)
-
-5. V3-V4 Target Region:
-   Expected: ~250-300bp for full 16S V3-V4 region
+   ~250bp (V3-V4 region, proper overlap for merging)
 
 ================================================================================
 HPC RESOURCE ALLOCATION
@@ -149,19 +134,16 @@ SBATCH Configuration (Bunya):
 Memory:
   BBDuk: 20GB
   Import: 8GB
-  Cutadapt: 8GB
   DADA2: 16GB
 
 CPU Cores:
   BBDuk: 10 cores
   Import: 4 cores
-  Cutadapt: 4 cores
   DADA2: 10 cores
 
 Time Limits:
   BBDuk: 2:00:00
   Import: 1:00:00
-  Cutadapt: 2:00:00
   DADA2: 2:00:00
 
 ================================================================================
@@ -182,9 +164,9 @@ Optional columns (add as needed):
 File format: Tab-separated values (TSV)
 Example:
   sample-id	Species	Tree_ID
-  SG001	Tree_Species_A	T1
-  SG002	Tree_Species_B	T2
-  SG003	Tree_Species_C	T3
+  SG0649_J6784	Tree_Species_A	T1
+  SG0650_J6784	Tree_Species_B	T2
+  ...
 
 ================================================================================
 QUALITY THRESHOLDS
@@ -200,6 +182,34 @@ Reverse reads: Start ~Q35, maintain Q25-30 longer
 
 This is typical for Illumina MiSeq 2x300bp runs.
 
+Merge Rate Expectations:
+  Good: >80% (indicates proper overlap)
+  Fair: 70-80% (acceptable)
+  Poor: <50% (indicates problems)
+
+This project achieved: 82-90% ✅
+
+Chimera Rate Expectations:
+  Good: 10-25% removed as chimeric
+  This project: 10-22% removed (excellent)
+
+================================================================================
+WORKFLOW EVOLUTION
+================================================================================
+
+Initial approach (NOT RECOMMENDED):
+  - Separate cutadapt step with --p-discard-untrimmed
+  - Result: Poor merge rates (30-70%), high false chimeras
+  - Issue: Over-trimming reduced overlap between paired reads
+
+Final approach (RECOMMENDED):
+  - Direct trim-left in DADA2
+  - Result: Excellent merge rates (82-90%), reliable data
+  - Advantage: Simpler, more reliable, better results
+
+Key lesson: For uniform primer sequences, DADA2's trim-left is preferable
+to separate cutadapt step due to overlap preservation.
+
 ================================================================================
 NOTES
 ================================================================================
@@ -210,5 +220,3 @@ NOTES
 - Check errors: tail -f jobname-JOBID.error
 - Large output files should not be committed to git
 - Raw sequencing data not tracked in repository (see .gitignore)
-
-================================================================================

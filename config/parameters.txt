@@ -1,0 +1,214 @@
+================================================================================
+RAINFOREST 16S AMPLICON ANALYSIS - PIPELINE PARAMETERS
+================================================================================
+
+PROJECT INFORMATION
+-------------------
+Project: Rainforest bark microbiome 16S analysis
+Sequencing Platform: Illumina MiSeq 2x300bp
+Target Region: 16S V3-V4
+Primers: 515F / 806wR (EMP protocol)
+Samples: 3 rainforest tree species (1 sample each)
+Sequencing Facility: ACE (UQ)
+HPC: Bunya (University of Queensland)
+Analysis Date: March 2026
+
+================================================================================
+BBDUK PARAMETERS
+================================================================================
+
+Input Format: Illumina paired-end FASTQ (gzip compressed)
+Output Format: Quality-trimmed paired-end FASTQ (gzip compressed)
+
+Quality Trimming:
+  qtrim=rl              - Trim quality on both ends (right and left)
+  trimq=10              - Trim to quality score Q10
+  minlength=50          - Discard reads shorter than 50bp
+
+Adapter/Contaminant Removal:
+  ref=adapters,phix     - Remove Illumina adapters and PhiX
+  ktrim=r               - Trim kmers to the right
+  k=23                  - Kmer length
+  mink=11               - Minimum kmer length
+  hdist=1               - Hamming distance for kmer matching
+
+Other:
+  tpe                   - Trim both ends if adapter found
+  tbo                   - Trim by overlap
+  threads=10            - CPU cores to use
+
+Expected Output: ~90-95% sequences retained (depends on quality)
+
+================================================================================
+QIIME2 IMPORT PARAMETERS
+================================================================================
+
+Input Format: CasavaOneEightSingleLanePerSampleDirFmt
+  File naming: SAMPLEID_S###_L###_R[1|2]_001.fastq.gz
+  
+Data Type: SampleData[PairedEndSequencesWithQuality]
+  Paired-end sequences with quality scores
+
+Output Artifact: demux-paired-end.qza
+
+Expected: All samples successfully imported
+
+================================================================================
+CUTADAPT PARAMETERS
+================================================================================
+
+Forward Primer (515F): GTGYCAGCMGCCGCGGTAA
+  - Standard EMP V3-V4 forward primer
+  - Expected location: Start of read 1 (R1)
+  - Length: 19bp (with degeneracies)
+
+Reverse Primer (806wR): CCGYCAATTYMTTTRAGTTT
+  - Standard EMP V4 reverse primer
+  - Expected location: Start of read 2 (R2)
+  - Length: 20bp (with degeneracies)
+
+Cutadapt Options:
+  --p-discard-untrimmed: FALSE (changed due to read length variation on MiSeq)
+  --p-cores: 4 CPU cores
+  
+Expected: Forward reads trimmed ~19bp, reverse reads may not have primer
+
+Output Artifacts:
+  - demux-trimmed.qza: Primer-trimmed sequences
+
+Quality Before/After Trimming:
+  Forward: 291bp → 272bp median length (19bp trimmed)
+  Reverse: 289bp → 289bp median length (no reverse primer found)
+
+================================================================================
+DADA2 DENOISING PARAMETERS
+================================================================================
+
+Input: demux-trimmed.qza (primer-trimmed sequences)
+
+Truncation Lengths:
+  trunc-len-f: 250bp     - Truncate R1 to 250bp (quality drops before this)
+  trunc-len-r: 210bp     - Truncate R2 to 210bp (maintains higher quality)
+  Rationale: Accounts for quality degradation, ensures sufficient overlap
+
+Trim Lengths (primer trimming):
+  trim-left-f: 0bp       - Already trimmed by cutadapt
+  trim-left-r: 0bp       - Already trimmed by cutadapt
+
+Denoising Parameters:
+  n-threads: 10          - CPU cores
+  
+Expected Output:
+  - rep-seqs.qza: Representative ASV sequences
+  - asv-table.qza: ASV abundance table
+  - denoising-stats.qza: Denoising statistics (input/output/merged counts)
+
+Quality Control Metrics to Check:
+  - % reads passing filter
+  - % reads merged
+  - % chimeras identified
+  - Final ASV count per sample
+
+Expected ASV Count: 100-500 per sample (depends on diversity)
+
+================================================================================
+EXPECTED SEQUENCE LENGTHS AT EACH STEP
+================================================================================
+
+1. Raw from MiSeq:
+   R1 (forward): 300bp
+   R2 (reverse): 300bp
+
+2. After BBDuk:
+   R1: ~291bp median
+   R2: ~289bp median
+
+3. After Cutadapt:
+   R1: ~272bp median (19bp primer removed)
+   R2: ~289bp median (primer not always found)
+
+4. After DADA2:
+   R1: Truncated to 250bp
+   R2: Truncated to 210bp
+   
+   Final merged ASV length: 
+   ~250bp (overlap of R1 and R2 with 16bp+ overlap required by DADA2)
+
+5. V3-V4 Target Region:
+   Expected: ~250-300bp for full 16S V3-V4 region
+
+================================================================================
+HPC RESOURCE ALLOCATION
+================================================================================
+
+SBATCH Configuration (Bunya):
+  Account: a_barefoot
+  Partition: general
+  QOS: normal
+  
+Memory:
+  BBDuk: 20GB
+  Import: 8GB
+  Cutadapt: 8GB
+  DADA2: 16GB
+
+CPU Cores:
+  BBDuk: 10 cores
+  Import: 4 cores
+  Cutadapt: 4 cores
+  DADA2: 10 cores
+
+Time Limits:
+  BBDuk: 2:00:00
+  Import: 1:00:00
+  Cutadapt: 2:00:00
+  DADA2: 2:00:00
+
+================================================================================
+SAMPLE METADATA FORMAT
+================================================================================
+
+Required columns:
+  - sample-id (column 1): Must match fastq filename prefix
+
+Optional columns (add as needed):
+  - Species
+  - Tree_ID
+  - Location
+  - Collection_Date
+  - Treatment
+  - Notes
+
+File format: Tab-separated values (TSV)
+Example:
+  sample-id	Species	Tree_ID
+  SG001	Tree_Species_A	T1
+  SG002	Tree_Species_B	T2
+  SG003	Tree_Species_C	T3
+
+================================================================================
+QUALITY THRESHOLDS
+================================================================================
+
+Minimum Quality (PHRED Q-scores):
+  Q10: 90% accuracy
+  Q20: 99% accuracy
+  Q30: 99.9% accuracy
+
+Forward reads: Start ~Q35, drop to Q20-25 by position 250
+Reverse reads: Start ~Q35, maintain Q25-30 longer
+
+This is typical for Illumina MiSeq 2x300bp runs.
+
+================================================================================
+NOTES
+================================================================================
+
+- All paths are HPC-specific; update for your system
+- Adjust resource requests based on queue availability
+- Monitor job status with: squeue -u USERNAME
+- Check errors: tail -f jobname-JOBID.error
+- Large output files should not be committed to git
+- Raw sequencing data not tracked in repository (see .gitignore)
+
+================================================================================

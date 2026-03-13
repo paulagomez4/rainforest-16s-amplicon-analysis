@@ -1,0 +1,4 @@
+sample-id	Species	Tree_ID	Collection_Date	Location	Notes
+SG001	Rainforest_Species_A	T1	2026-01-15	Brisbane	Bark sample
+SG002	Rainforest_Species_B	T2	2026-01-15	Brisbane	Bark sample
+SG003	Rainforest_Species_C	T3	2026-01-15	Brisbane	Bark sample

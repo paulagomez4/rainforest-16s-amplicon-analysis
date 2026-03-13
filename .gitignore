@@ -1,0 +1,45 @@
+# Large data files (do not track)
+*.fastq
+*.fastq.gz
+*.fasta
+*.fa
+*.qza
+*.qzv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Conda
+*.conda
+conda-lock.yml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# HPC job outputs
+*.output
+*.error
+slurm-*.out
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Results (optional - uncomment if you want to track some results)
+# results/
+# bbduk/
+
+# Metadata (if containing sensitive info)
+# data/*metadata*.txt
